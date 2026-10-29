@@ -89,6 +89,7 @@ th{color:var(--mut);font-weight:600}
   <div id="count">0</div>
   <div class="hint" style="text-align:center">طالب تم تسجيل حضوره بهذه الجلسة</div>
   <div id="result">حمّل ملف الحضور أولاً.</div>
+  <div class="hint" id="raw" style="text-align:center;margin-top:6px"></div>
   <div id="pick"></div>
   <label for="manual">إدخال الرمز يدوياً (رقم الملف)</label>
   <div class="row"><input type="text" id="manual" inputmode="numeric" autocomplete="off"><button id="manualGo" style="flex:0 0 auto">تسجيل</button></div>
@@ -277,14 +278,18 @@ function doMark(s,st){
   updateInfo();
 }
 function hidePick(){picking=false;$('pick').style.display='none';$('pick').innerHTML='';}
+const AR='٠١٢٣٤٥٦٧٨٩',FA='۰۱۲۳۴۵۶۷۸۹';
+function fixDigits(x){return x.replace(/[٠-٩]/g,d=>AR.indexOf(d)).replace(/[۰-۹]/g,d=>FA.indexOf(d));}
 function handleCode(code){
-  code=String(code||'').trim(); if(!code) return;
+  code=fixDigits(String(code||'').trim()); if(!code) return;
+  $('raw').textContent='آخر رمز مقروء: '+code;
   if(!wb){setResult('حمّل ملف الحضور أولاً.','bad');return;}
   const now=Date.now();
   if(code===lastCode && now-lastTime<2500) return;
   lastCode=code; lastTime=now;
   if(picking) return;
-  const res=findStudents(code);
+  let res=findStudents(code);
+  if(!res.length){const m=code.match(/\d{6,}/g)||[]; for(const x of m){res=findStudents(x); if(res.length)break;}}
   if(!res.length){setResult('الرمز غير موجود: '+code,'bad');addLog(code,'—','غير موجود');return;}
   if(res.length===1){doMark(res[0].s,res[0].st);return;}
   // أكثر من طالب بنفس الرقم: اختيار يدوي
@@ -303,6 +308,8 @@ function handleCode(code){
 
 /* ---------- الكاميرا ---------- */
 async function startCam(){
+  if(typeof jsQR==='undefined'){setResult('مكتبة قراءة QR ما تحمّلت. تأكد من الإنترنت وأعد تحميل الصفحة.','bad');return;}
+  if(!wb){setResult('ارفع ملف الحضور أولاً، وبعدها شغّل الكاميرا.','bad');return;}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setResult('المتصفح لا يدعم الكاميرا (لازم https).','bad');return;}
   stopCam();
   try{
@@ -380,6 +387,7 @@ $('delCodes').onclick=async()=>{ await idbDel('codes'); codesMap=new Map(); setS
 
 /* ---------- عند فتح الصفحة ---------- */
 (async()=>{
+  if(typeof ExcelJS==='undefined'||typeof jsQR==='undefined') setStatus('تنبيه: إحدى المكتبات (Excel أو QR) ما تحمّلت. تأكد من الإنترنت وأعد فتح الصفحة.');
   const c=await idbGet('codes'); if(c&&typeof ExcelJS!=='undefined') await loadCodes(c,false);
   const a=await idbGet('att'); if(a) await loadAttendance(a,false);
 })();
