@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#142b4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="حضور المختبر">
+<title>نظام حضور المختبر باستخدام QR</title>
+<style>
+:root{--navy:#142b4a;--bg:#f2f5f9;--card:#fff;--line:#d9e0ea;--ok:#1b8a3a;--okbg:#e2f5e7;--warn:#a86a00;--warnbg:#fff1d6;--bad:#b3261e;--badbg:#fde6e4;--txt:#1b2430;--mut:#5d6b7c}
+@media (prefers-color-scheme:dark){:root{--bg:#10151c;--card:#19212b;--line:#2c3746;--txt:#e7edf5;--mut:#9aa9bb;--okbg:#143321;--warnbg:#3a2c0d;--badbg:#3b1815;--ok:#5fd07f;--warn:#f0b44c;--bad:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--txt);line-height:1.6}
+header{background:var(--navy);color:#fff;padding:16px 14px}
+header h1{margin:0;font-size:20px}
+header p{margin:4px 0 0;font-size:13px;opacity:.85}
+main{max-width:860px;margin:0 auto;padding:12px}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+h2{margin:0 0 10px;font-size:16px}
+label{display:block;font-size:13px;color:var(--mut);margin:8px 0 4px}
+input[type=file],select,input[type=text]{width:100%;padding:10px;font-size:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--txt)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1 1 140px}
+button{font-size:15px;padding:10px 14px;border:0;border-radius:8px;background:var(--navy);color:#fff;cursor:pointer}
+button.sec{background:transparent;color:var(--txt);border:1px solid var(--line)}
+button.danger{background:var(--bad);color:#fff}
+button:disabled{opacity:.45}
+.hint{font-size:12px;color:var(--mut);margin:4px 0 0}
+#status{padding:10px 12px;border-radius:8px;background:var(--bg);font-size:14px;margin-top:10px}
+#cam{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-height:340px;margin:10px 0}
+#cam video{width:100%;height:100%;object-fit:cover}
+#cam .frame{position:absolute;inset:18% 18%;border:3px solid rgba(255,255,255,.8);border-radius:14px;pointer-events:none}
+#result{padding:14px;border-radius:10px;font-size:18px;font-weight:700;text-align:center;background:var(--bg);min-height:56px}
+#result.ok{background:var(--okbg);color:var(--ok)}
+#result.dup{background:var(--warnbg);color:var(--warn)}
+#result.bad{background:var(--badbg);color:var(--bad)}
+#count{font-size:34px;font-weight:800;text-align:center}
+#pick{display:none;margin-top:10px}
+#pick button{display:block;width:100%;text-align:right;margin-bottom:6px;background:var(--bg);color:var(--txt);border:1px solid var(--line)}
+#info div{font-size:14px;padding:3px 0}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{color:var(--mut);font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <h1>نظام حضور المختبر باستخدام QR <small style="font-size:12px;opacity:.7">(نسخة 3 — المجموعات A/B/C)</small></h1>
+  <p>يعمل مع ملف Excel (ورقة لكل مجموعة، «ح» حاضر، «غ» غائب). الملفات تبقى محفوظة داخل المتصفح.</p>
+</header>
+<main>
+<section>
+  <h2>١) الملفات</h2>
+  <label for="fAtt">ملف الحضور والغياب (Excel) — يُرفع مرة وحدة ويبقى محفوظ</label>
+  <input type="file" id="fAtt" accept=".xlsx">
+  <div class="row" style="margin-top:6px"><button class="sec" id="delAtt">حذف نسخة الحضور المحفوظة</button></div>
+  <label for="fCodes">ملف الرموز (اختياري) — فقط إذا رمز الـ QR يختلف عن «رقم الملف»</label>
+  <input type="file" id="fCodes" accept=".xlsx">
+  <div class="row" style="margin-top:6px"><button class="sec" id="delCodes">حذف ملف الرموز المحفوظ</button></div>
+  <div class="row">
+    <div><label for="group">المجموعة</label><select id="group"><option value="auto">تحديد المجموعة تلقائياً (كل المجموعات)</option></select></div>
+    <div><label for="lec">رقم المحاضرة</label><select id="lec"></select></div>
+  </div>
+  <div id="status">اختر ملف الحضور.</div>
+  <div id="info" style="margin-top:8px"></div>
+</section>
+<section>
+  <h2>٢) امسح QR الطالب</h2>
+  <div class="row">
+    <button id="camOn">تشغيل الكاميرا</button>
+    <button class="sec" id="camOff">إيقاف الكاميرا</button>
+    <button class="sec" id="camFlip">الكاميرا: خلفية (اضغط للتبديل)</button>
+  </div>
+  <div id="cam" hidden><video id="video" playsinline muted autoplay></video><div class="frame"></div></div>
+  <canvas id="canvas" hidden></canvas>
+  <div id="count">0</div>
+  <div class="hint" style="text-align:center">طالب تم تسجيل حضوره بهذه الجلسة</div>
+  <div id="result">حمّل ملف الحضور أولاً.</div>
+  <div class="hint" id="raw" style="text-align:center;margin-top:6px"></div>
+  <div id="pick"></div>
+  <label for="manual">إدخال الرمز يدوياً (رقم الملف)</label>
+  <div class="row"><input type="text" id="manual" inputmode="numeric" autocomplete="off"><button id="manualGo" style="flex:0 0 auto">تسجيل</button></div>
+  <p class="hint">يصدر النظام صوتاً عند تسجيل حضور جديد فقط، ولا يصدر صوت التسجيل عند تكرار الحضور.</p>
+</section>
+<section>
+  <h2>٣) النتائج والتنزيل</h2>
+  <div class="row"><button id="dl">تنزيل ملف Excel المحدّث</button><button class="sec" id="dlLec">تنزيل حاضري المحاضرة (كل المجموعات)</button></div>
+  <div class="row" style="margin-top:8px"><button class="danger" id="endLec">إنهاء المحاضرة: كتابة «غ» لمن لم يحضر</button><button class="sec" id="clearLog">مسح سجل الجلسة فقط</button></div>
+  <p class="hint">«تنزيل ملف Excel المحدّث» ينزّل نسخة من ملفك مع «ح» للحاضرين وتاريخ المحاضرة إذا كان فارغاً. زر «إنهاء المحاضرة» يعمل على المجموعة المختارة فقط (لازم تختار مجموعة محددة). الخانة الفارغة تُحسب غياباً بالملف أصلاً.</p>
+  <div class="tablewrap"><table><thead><tr><th>الوقت</th><th>اسم الطالب</th><th>المجموعة</th><th>النتيجة</th></tr></thead><tbody id="log"></tbody></table></div>
+</section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+/* تحميل jsQR من أكثر من مصدر احتياطياً */
+let qrLoadPromise=null;
+function ensureQR(){
+  if(typeof jsQR!=='undefined') return Promise.resolve(true);
+  if(qrLoadPromise) return qrLoadPromise;
+  qrLoadPromise=(async()=>{
+    const sources=[
+      'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
+      'https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'
+    ];
+    for(const src of sources){
+      const ok=await new Promise(resolve=>{
+        const old=document.querySelector('script[data-qr-loader="true"]');
+        if(old) old.remove();
+        const s=document.createElement('script'); s.src=src; s.async=true; s.dataset.qrLoader='true';
+        s.onload=()=>resolve(typeof jsQR!=='undefined');
+        s.onerror=()=>resolve(false);
+        document.head.appendChild(s);
+        setTimeout(()=>resolve(typeof jsQR!=='undefined'),8000);
+      });
+      if(ok && typeof jsQR!=='undefined') return true;
+    }
+    qrLoadPromise=null;
+    return false;
+  })();
+  return qrLoadPromise;
+}
+</script>
+<script>
+const $ = id => document.getElementById(id);
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('lab-attendance-v2',1);r.onupgradeneeded=()=>r.result.createObjectStore('files');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function idbSet(k,v){try{const db=await idb();return await new Promise((res,rej)=>{const t=db.transaction('files','readwrite');t.objectStore('files').put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error);});}catch(e){console.warn(e);}}
+async function idbGet(k){try{const db=await idb();return await new Promise((res,rej)=>{const q=db.transaction('files').objectStore('files').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}catch(e){return undefined;}}
+async function idbDel(k){try{const db=await idb();return await new Promise((res)=>{const t=db.transaction('files','readwrite');t.objectStore('files').delete(k);t.oncomplete=res;t.onerror=res;});}catch(e){}}
+function txt(v){if(v==null)return '';if(v instanceof Date)return v.toISOString();if(typeof v==='object'){if(v.richText)return v.richText.map(t=>t.text).join('').trim();if('result' in v)return txt(v.result);if(v.text!=null)return txt(v.text);return '';}return String(v).trim();}
+function norm(s){return txt(s).replace(/[\u064B-\u065F\u0640]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').toLowerCase();}
+function todayStr(){const d=new Date();return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');}
+function stamp(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+let wb=null,sheets=[],codesMap=new Map(),sessionLog=[],sessionCount=0;
+let stream=null,scanning=false,facing='environment',lastCode='',lastTime=0,picking=false,persistTimer=null;
+let audioCtx=null,lastBeep=0;
+function beep(){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    if(!audioCtx)audioCtx=new AC();
+    if(audioCtx.state==='suspended')audioCtx.resume();
+    const now=audioCtx.currentTime,osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+    osc.type='sine';osc.frequency.setValueAtTime(1050,now);
+    gain.gain.setValueAtTime(0.0001,now);gain.gain.exponentialRampToValueAtTime(0.22,now+0.015);gain.gain.exponentialRampToValueAtTime(0.0001,now+0.18);
+    osc.connect(gain);gain.connect(audioCtx.destination);osc.start(now);osc.stop(now+0.19);
+  }catch(e){console.warn('Audio beep failed',e);}
+}
+for(let i=1;i<=15;i++){const o=document.createElement('option');o.value=i;o.textContent='المحاضرة '+i+' (م'+i+')';$('lec').appendChild(o);}
+function setStatus(t){$('status').textContent=t;}
+function setResult(t,cls){const r=$('result');r.textContent=t;r.className=cls||'';}
+function fixLabels(){
+  const stripped=sheets.map(s=>s.label.replace(/^(\D+)\d+$/,'$1'));
+  if(new Set(stripped).size===sheets.length) sheets.forEach((s,i)=>{s.label=stripped[i];});
+}
+function parseSheets(){
+  sheets=[];
+  wb.worksheets.forEach(ws=>{
+    let hdr=0,cId=0;
+    for(let r=1;r<=12&&!hdr;r++)ws.getRow(r).eachCell((c,ci)=>{if(!hdr&&txt(c.value)==='رقم الملف'){hdr=r;cId=ci;}});
+    if(!hdr)return;
+    let cName=0,cType=0;const lec={};
+    ws.getRow(hdr).eachCell((c,ci)=>{const t=txt(c.value);if(t==='اسم الطالب')cName=ci;else if(t==='نوع الدراسة')cType=ci;else if(/^\d{1,2}$/.test(t)&&+t>=1&&+t<=40)lec[+t]=ci;});
+    if(!cName)return;
+    const students=[];
+    for(let r=hdr+2;r<=ws.rowCount;r++){const name=txt(ws.getCell(r,cName).value);if(!name||/توقيع/.test(name))continue;students.push({row:r,id:txt(ws.getCell(r,cId).value),name,type:cType?txt(ws.getCell(r,cType).value):'',nn:norm(name)});}
+    const tm=txt(ws.getCell(1,1).value).match(/كروب\s*([A-Za-z\u0600-\u06FF0-9]+)\s*$/);
+    sheets.push({ws,name:ws.name,label:tm?tm[1]:ws.name,hdr,dateRow:hdr+1,lec,students});
+  });
+}
+async function loadAttendance(buf,save){
+  if(typeof ExcelJS==='undefined'){setStatus('تعذّر تحميل مكتبة Excel. تأكد من الإنترنت وأعد فتح الصفحة.');return;}
+  try{
+    const w=new ExcelJS.Workbook();await w.xlsx.load(buf);wb=w;wb.calcProperties={fullCalcOnLoad:true};parseSheets();fixLabels();
+    if(!sheets.length){wb=null;setStatus('ما لقيت أوراق بصيغة (رقم الملف / اسم الطالب) داخل هذا الملف.');return;}
+    if(save)await idbSet('att',buf);
+    const cur=$('group').value;
+    $('group').innerHTML='<option value="auto">تحديد المجموعة تلقائياً (كل المجموعات)</option>'+sheets.map(s=>'<option value="'+s.name.replace(/"/g,'&quot;')+'">'+s.label.replace(/</g,'&lt;')+'</option>').join('');
+    if([...$('group').options].some(o=>o.value===cur))$('group').value=cur;
+    const total=sheets.reduce((a,s)=>a+s.students.length,0);
+    setStatus('تم تحميل الملف: '+sheets.length+' مجموعات، '+total+' طالب.');setResult('جاهز للمسح.','');updateInfo();
+  }catch(e){console.error(e);setStatus('تعذّرت قراءة الملف: '+e.message);}
+}
+async function loadCodes(buf,save){
+  try{const w=new ExcelJS.Workbook();await w.xlsx.load(buf);codesMap=new Map();w.worksheets.forEach(ws=>ws.eachRow(row=>{const vals=[];row.eachCell(c=>{const t=txt(c.value);if(t)vals.push(t);});vals.forEach(v=>{if(!codesMap.has(v))codesMap.set(v,[]);codesMap.get(v).push(vals);});}));if(save)await idbSet('codes',buf);setStatus('تم تحميل ملف الرموز ('+codesMap.size+' قيمة).');}
+  catch(e){setStatus('تعذّرت قراءة ملف الرموز: '+e.message);}
+}
+function updateInfo(){
+  const lec=+$('lec').value,box=$('info');box.innerHTML='';
+  sheets.forEach(s=>{const col=s.lec[lec];let n=0;if(col)s.students.forEach(st=>{if(txt(s.ws.getCell(st.row,col).value)==='ح')n++;});const date=col?txt(s.ws.getCell(s.dateRow,col).value):'';const d=document.createElement('div');d.textContent=s.label+': '+(col?('التاريخ '+(date||'— (يُكتب عند أول حضور)')+' · حاضر '+n+' من '+s.students.length):'هذي المحاضرة غير موجودة بالورقة');box.appendChild(d);});
+}
+$('lec').addEventListener('change',updateInfo);
+function findStudents(code){
+  const g=$('group').value,c=code.trim(),pool=sheets.filter(s=>g==='auto'||s.name===g);let res=[];
+  const scan=pred=>pool.forEach(s=>s.students.forEach(st=>{if(pred(st))res.push({s,st});}));
+  scan(st=>st.id&&st.id===c);if(res.length)return res;
+  const rows=codesMap.get(c);
+  if(rows){for(const vals of rows){vals.forEach(v=>{if(v!==c){const nv=norm(v);scan(st=>(st.id&&st.id===v)||st.nn===nv);}});if(res.length)break;}}
+  const seen=new Set();return res.filter(x=>{const k=x.s.name+'#'+x.st.row;if(seen.has(k))return false;seen.add(k);return true;});
+}
+function mark(s,st,lec){
+  const col=s.lec[lec];if(!col)return 'nolec';
+  const cell=s.ws.getCell(st.row,col);if(txt(cell.value)==='ح')return 'dup';
+  cell.value='ح';const dc=s.ws.getCell(s.dateRow,col);if(!txt(dc.value))dc.value=todayStr();return 'ok';
+}
+function addLog(name,group,result){
+  sessionLog.unshift({t:new Date().toLocaleTimeString('ar-IQ'),name,group,result});const tb=$('log');tb.innerHTML='';
+  sessionLog.slice(0,200).forEach(l=>{const tr=document.createElement('tr');[l.t,l.name,l.group,l.result].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});tb.appendChild(tr);});
+}
+function schedulePersist(){clearTimeout(persistTimer);persistTimer=setTimeout(async()=>{try{const b=await wb.xlsx.writeBuffer();await idbSet('att',b);}catch(e){console.warn(e);}},1200);}
+function doMark(s,st){
+  const lec=+$('lec').value,r=mark(s,st,lec);
+  if(r==='ok'){sessionCount++;$('count').textContent=sessionCount;setResult('✔ '+st.name+' — حاضر ('+s.label+')','ok');addLog(st.name,s.label,'حاضر');schedulePersist();beep();if(navigator.vibrate)navigator.vibrate(80);}
+  else if(r==='dup'){setResult('سُجّل مسبقاً: '+st.name+' ('+s.label+')','dup');addLog(st.name,s.label,'مسجل مسبقاً');}
+  else setResult('المحاضرة '+lec+' غير موجودة بمجموعة '+s.label,'bad');
+  updateInfo();
+}
+function hidePick(){picking=false;$('pick').style.display='none';$('pick').innerHTML='';}
+const AR='٠١٢٣٤٥٦٧٨٩',FA='۰۱۲۳۴۵۶۷۸۹';
+function fixDigits(x){return x.replace(/[٠-٩]/g,d=>AR.indexOf(d)).replace(/[۰-۹]/g,d=>FA.indexOf(d));}
+function handleCode(code){
+  code=fixDigits(String(code||'').trim());if(!code)return;$('raw').textContent='آخر رمز مقروء: '+code;
+  if(!wb){setResult('حمّل ملف الحضور أولاً.','bad');return;}
+  const now=Date.now();if(code===lastCode&&now-lastTime<2500)return;lastCode=code;lastTime=now;if(picking)return;
+  let res=findStudents(code);if(!res.length){const m=code.match(/\d{6,}/g)||[];for(const x of m){res=findStudents(x);if(res.length)break;}}
+  if(!res.length){setResult('الرمز غير موجود: '+code,'bad');addLog(code,'—','غير موجود');return;}
+  if(res.length===1){doMark(res[0].s,res[0].st);return;}
+  picking=true;const p=$('pick');p.innerHTML='';p.style.display='block';const h=document.createElement('div');h.className='hint';h.textContent='هذا الرقم مشترك بين أكثر من طالب. اختر الطالب الصحيح:';p.appendChild(h);
+  res.forEach(({s,st})=>{const b=document.createElement('button');b.textContent=st.name+' — '+s.label+(st.type?(' — '+st.type):'');b.onclick=()=>{hidePick();doMark(s,st);};p.appendChild(b);});
+  const c=document.createElement('button');c.className='sec';c.textContent='إلغاء';c.onclick=hidePick;p.appendChild(c);setResult('اختر الطالب من القائمة ↓','dup');
+}
+async function startCam(){
+  if(!wb){setResult('ارفع ملف الحضور أولاً، وبعدها شغّل الكاميرا.','bad');return;}
+  setResult('جاري تحميل مكتبة قراءة QR...','');
+  const qrReady=await ensureQR();
+  if(!qrReady){setResult('تعذّر تحميل مكتبة QR من المصادر المتاحة. تحقق من الإنترنت أو جرّب شبكة أخرى.','bad');return;}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setResult('المتصفح لا يدعم الكاميرا (لازم HTTPS).','bad');return;}
+  stopCam();
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});
+    const v=$('video');v.srcObject=stream;v.setAttribute('playsinline','');v.muted=true;$('cam').hidden=false;await v.play();scanning=true;requestAnimationFrame(tick);
+    if(!audioCtx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)audioCtx=new AC();}
+    if(audioCtx&&audioCtx.state==='suspended')await audioCtx.resume();
+    setResult('الكاميرا تعمل. وجّه QR داخل الإطار.','');
+  }catch(e){setResult('تعذّر تشغيل الكاميرا: '+e.message,'bad');}
+}
+function stopCam(){scanning=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}$('video').srcObject=null;$('cam').hidden=true;}
+const ctx=$('canvas').getContext('2d',{willReadFrequently:true});
+function tick(){
+  if(!scanning)return;const v=$('video');
+  if(v.readyState>=2&&v.videoWidth){
+    const scale=Math.min(1,900/v.videoWidth),w=Math.round(v.videoWidth*scale),h=Math.round(v.videoHeight*scale),cv=$('canvas');cv.width=w;cv.height=h;
+    ctx.drawImage(v,0,0,w,h);const img=ctx.getImageData(0,0,w,h);const q=jsQR(img.data,w,h,{inversionAttempts:'attemptBoth'});if(q&&q.data)handleCode(q.data);
+  }
+  requestAnimationFrame(tick);
+}
+$('camOn').onclick=startCam;$('camOff').onclick=stopCam;
+$('camFlip').onclick=()=>{facing=facing==='environment'?'user':'environment';$('camFlip').textContent='الكاميرا: '+(facing==='environment'?'خلفية':'أمامية')+' (اضغط للتبديل)';if(stream)startCam();};
+$('manualGo').onclick=()=>{handleCode($('manual').value);$('manual').value='';};
+$('manual').addEventListener('keydown',e=>{if(e.key==='Enter')$('manualGo').click();});
+function saveBlob(buf,name){const url=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);}
+$('dl').onclick=async()=>{if(!wb){setStatus('حمّل ملف الحضور أولاً.');return;}saveBlob(await wb.xlsx.writeBuffer(),'attendance_updated_'+stamp()+'.xlsx');};
+$('dlLec').onclick=async()=>{
+  if(!wb){setStatus('حمّل ملف الحضور أولاً.');return;}const lec=+$('lec').value,o=new ExcelJS.Workbook(),ws=o.addWorksheet('المحاضرة '+lec,{views:[{rightToLeft:true}]});
+  ws.addRow(['ت','رقم الملف','اسم الطالب','نوع الدراسة','المجموعة']).font={bold:true};let i=0;
+  sheets.forEach(s=>{const col=s.lec[lec];if(!col)return;s.students.forEach(st=>{if(txt(s.ws.getCell(st.row,col).value)==='ح')ws.addRow([++i,st.id,st.name,st.type,s.label]);});});
+  ws.columns=[{width:6},{width:16},{width:34},{width:12},{width:10}];saveBlob(await o.xlsx.writeBuffer(),'lecture_'+lec+'_present_'+stamp()+'.xlsx');
+};
+$('endLec').onclick=()=>{
+  if(!wb){setStatus('حمّل ملف الحضور أولاً.');return;}const g=$('group').value,lec=+$('lec').value;
+  if(g==='auto'){setStatus('اختر مجموعة محددة أولاً حتى أكتب «غ» لغائبيها.');return;}
+  const s=sheets.find(x=>x.name===g),col=s&&s.lec[lec];if(!col){setStatus('المحاضرة غير موجودة بهذه الورقة.');return;}
+  if(!confirm('كتابة «غ» لكل طالب فارغ بالمحاضرة '+lec+' في المجموعة '+s.label+'؟'))return;
+  let n=0;s.students.forEach(st=>{const c=s.ws.getCell(st.row,col);if(!txt(c.value)){c.value='غ';n++;}});
+  const dc=s.ws.getCell(s.dateRow,col);if(!txt(dc.value))dc.value=todayStr();schedulePersist();updateInfo();setStatus('تم تسجيل «غ» لـ '+n+' طالب في '+s.label+' (المحاضرة '+lec+').');
+};
+$('clearLog').onclick=()=>{sessionLog=[];sessionCount=0;$('count').textContent=0;$('log').innerHTML='';};
+$('fAtt').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;setStatus('جاري القراءة...');await loadAttendance(await f.arrayBuffer(),true);});
+$('fCodes').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;await loadCodes(await f.arrayBuffer(),true);});
+$('delAtt').onclick=async()=>{if(!confirm('حذف نسخة الحضور المحفوظة بالمتصفح؟ (نزّل المحدّث قبل)'))return;await idbDel('att');wb=null;sheets=[];$('info').innerHTML='';setStatus('حُذفت النسخة المحفوظة.');};
+$('delCodes').onclick=async()=>{await idbDel('codes');codesMap=new Map();setStatus('حُذف ملف الرموز المحفوظ.');};
+(async()=>{
+  if(typeof ExcelJS==='undefined')setStatus('تنبيه: مكتبة Excel ما تحمّلت. تأكد من الإنترنت وأعد فتح الصفحة.');
+  else setStatus('جاهز. إذا لم تكن قد رفعت ملف الحضور سابقاً، ارفعه أولاً.');
+  const c=await idbGet('codes');if(c&&typeof ExcelJS!=='undefined')await loadCodes(c,false);
+  const a=await idbGet('att');if(a&&typeof ExcelJS!=='undefined')await loadAttendance(a,false);
+})();
+</script>
+</body>
+</html>
